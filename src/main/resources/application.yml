@@ -7,11 +7,42 @@ spring:
     name: ms-feed
   config:
     import: "classpath:application-vault.yml,vault://"
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: ${db-url}
+    username: ${db-username}
+    password: ${db-password}
+  liquibase:
+    enabled: true
+    change-log: classpath:migration/changelog-master.xml
+    default-schema: ms_feed
+    liquibase-schema: ms_feed
+  jpa:
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        default_schema: ms_feed
+        ddl-auto: none
+    generate-ddl: false
+
   security:
     oauth2:
       resourceserver:
         jwt:
           issuer-uri: ${issuer-uri}
+
+  kafka:
+    bootstrap-servers: ${kafka-url}
+    consumer:
+      group-id: feed-service-group
+      auto-offset-reset: latest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+        spring.json.use.type.headers: false
+        spring.json.value.default.type: com.example.msfeed.entity.dto.PinImageEmbeddingEvent
 
 server:
   port: 0
