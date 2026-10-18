@@ -1,9 +1,8 @@
 package com.example.msfeed.consumer;
 
 import com.example.msfeed.entity.Feed;
-import com.example.msfeed.entity.dto.PinImageEmbeddingEvent;
+import com.example.msfeed.dto.PinImageEmbeddingEvent;
 import com.example.msfeed.repository.FeedRepository;
-import com.pgvector.PGvector;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;

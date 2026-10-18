@@ -26,6 +26,19 @@ spring:
         ddl-auto: none
     generate-ddl: false
 
+  mongodb:
+    host: ${mongo-host}
+    port: ${mongo-port}
+    database: ${mongo-database}
+    username: ${mongo-username}
+    password: ${mongo-password}
+    authentication-database: admin
+    representation:
+      uuid: standard
+  data:
+    mongodb:
+      auto-index-creation: true
+
   security:
     oauth2:
       resourceserver:
@@ -42,7 +55,7 @@ spring:
       properties:
         spring.json.trusted.packages: "*"
         spring.json.use.type.headers: false
-        spring.json.value.default.type: com.example.msfeed.entity.dto.PinImageEmbeddingEvent
+        spring.json.value.default.type: com.example.msfeed.dto.PinImageEmbeddingEvent
 
 server:
   port: 0

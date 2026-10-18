@@ -1,4 +1,4 @@
-package com.example.msfeed.entity.dto;
+package com.example.msfeed.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
