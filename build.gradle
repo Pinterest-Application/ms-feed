@@ -20,7 +20,7 @@ ext {
 }
 
 dependencies {
-	implementation 'com.example:lib-exception:0.0.4'
+	implementation 'com.example:lib-exception:0.0.5'
 
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
@@ -34,12 +34,11 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-liquibase'
 	implementation 'org.liquibase:liquibase-core'
 	implementation 'org.springframework.boot:spring-boot-starter-data-mongodb'
-	implementation 'org.springframework.boot:spring-boot-starter-cache'
-	implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+	implementation 'org.apache.commons:commons-pool2'
 
 	implementation 'org.hibernate.orm:hibernate-vector'
 
-	// Source: https://mvnrepository.com/artifact/com.pgvector/pgvector
 	implementation("com.pgvector:pgvector:0.1.6")
 	implementation 'org.springframework.boot:spring-boot-starter-kafka'
 	testImplementation 'org.springframework.kafka:spring-kafka-test'

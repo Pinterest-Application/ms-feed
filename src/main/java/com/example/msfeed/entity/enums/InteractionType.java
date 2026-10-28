@@ -7,7 +7,6 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum InteractionType {
 
-    // Explicit Positive
     SAVE(1.0, InteractionCategory.EXPLICIT_POSITIVE),
     FOLLOW_AUTHOR(0.9, InteractionCategory.EXPLICIT_POSITIVE),
     SHARE(0.8, InteractionCategory.EXPLICIT_POSITIVE),
@@ -15,16 +14,13 @@ public enum InteractionType {
     LINK_CLICK(0.6, InteractionCategory.EXPLICIT_POSITIVE),
     LIKE(0.6, InteractionCategory.EXPLICIT_POSITIVE),
 
-    // Passive Positive
     CLICK_EXPAND(0.4, InteractionCategory.PASSIVE_POSITIVE),
     LONG_DWELL(0.3, InteractionCategory.PASSIVE_POSITIVE),
     SCROLL_PAUSE(0.15, InteractionCategory.PASSIVE_POSITIVE),
 
-    // Implicit Negative
     IMPRESSION_SKIP(-0.05, InteractionCategory.IMPLICIT_NEGATIVE),
     QUICK_BOUNCE(-0.3, InteractionCategory.IMPLICIT_NEGATIVE),
 
-    // Explicit Negative
     HIDE_PIN(-1.0, InteractionCategory.EXPLICIT_NEGATIVE),
     FEEDBACK_NOT_RELEVANT(-1.0, InteractionCategory.EXPLICIT_NEGATIVE),
     FEEDBACK_SEEN_OFTEN(-0.4, InteractionCategory.EXPLICIT_NEGATIVE);

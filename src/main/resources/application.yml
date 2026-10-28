@@ -1,6 +1,6 @@
 logging:
   level:
-    org.springframework: DEBUG
+    org.springframework: INFO
 
 spring:
   application:
@@ -38,6 +38,17 @@ spring:
   data:
     mongodb:
       auto-index-creation: true
+    redis:
+      host: ${redis-host}
+      port: ${redis-port}
+      password: ${redis-password}
+      timeout: 3s
+      lettuce:
+        pool:
+          enabled: true
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
 
   security:
     oauth2:
@@ -73,3 +84,17 @@ management:
     web:
       exposure:
         include: health,info
+
+feed:
+  discovery:
+    batch-size: 100
+    max-session-size: 1000
+    session-ttl: 30m
+    max-interactions: 500
+    half-life-days: 7.0
+    max-weight-per-pin: 1.5
+    negative-beta: 0.3
+    exploration-ratio: 0.2
+    hnsw-ef-search: 200
+    hnsw-iterative-scan: true
+    max-client-timestamp-skew: 1d

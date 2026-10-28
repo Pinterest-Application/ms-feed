@@ -16,7 +16,8 @@ import java.util.UUID;
 
 @Document(collection = "interactions")
 @CompoundIndexes({
-        @CompoundIndex(name = "user_pin_idx", def = "{'userId': 1, 'pinId': 1}")
+        @CompoundIndex(name = "user_pin_idx", def = "{'userId': 1, 'pinId': 1}"),
+        @CompoundIndex(name = "user_created_idx", def = "{'userId': 1, 'createdAt': -1}")
 })
 @Getter
 @Setter
