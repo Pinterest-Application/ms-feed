@@ -1,5 +1,6 @@
 package com.example.msfeed.service;
 
+import com.example.msfeed.config.DiscoveryFeedProperties;
 import com.example.msfeed.dto.BatchInteractionRequest;
 import com.example.msfeed.entity.Interaction;
 import com.example.msfeed.repository.InteractionRepository;
@@ -17,6 +18,7 @@ import java.util.UUID;
 public class InteractionService {
 
     private final InteractionRepository interactionRepository;
+    private final DiscoveryFeedProperties properties;
 
     public void processBatchInteractions(UUID userId, BatchInteractionRequest request) {
         Instant now = Instant.now();
@@ -27,10 +29,19 @@ public class InteractionService {
                         .pinId(item.getPinId())
                         .interactionType(item.getInteractionType())
                         .metadata(item.getMetadata())
-                        .createdAt(item.getTimestamp() != null ? item.getTimestamp() : now)
+                        .createdAt(sanitizeTimestamp(item.getTimestamp(), now))
                         .build())
                 .toList();
 
         interactionRepository.saveAll(entities);
+    }
+
+    Instant sanitizeTimestamp(Instant clientTimestamp, Instant now) {
+        if (clientTimestamp == null
+                || clientTimestamp.isAfter(now)
+                || clientTimestamp.isBefore(now.minus(properties.getMaxClientTimestampSkew()))) {
+            return now;
+        }
+        return clientTimestamp;
     }
 }

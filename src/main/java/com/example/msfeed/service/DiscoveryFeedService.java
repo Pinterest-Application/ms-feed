@@ -1,23 +1,30 @@
 package com.example.msfeed.service;
 
-import com.example.msfeed.config.CacheConfig;
+import com.example.msfeed.config.DiscoveryFeedProperties;
+import com.example.msfeed.dto.DiscoveryFeedPage;
 import com.example.msfeed.dto.FeedResponse;
 import com.example.msfeed.entity.Feed;
 import com.example.msfeed.entity.Interaction;
+import com.example.msfeed.repository.FeedCandidateRepository;
 import com.example.msfeed.repository.FeedRepository;
 import com.example.msfeed.repository.InteractionRepository;
-import com.example.msfeed.util.VectorDecayCalculator;
+import com.example.msfeed.service.UserTasteProfileBuilder.TasteProfile;
+import com.example.msfeed.session.FeedCursor;
+import com.example.msfeed.session.FeedSession;
+import com.example.msfeed.session.FeedSessionStore;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -25,66 +32,125 @@ import java.util.UUID;
 public class DiscoveryFeedService {
 
     private final FeedRepository feedRepository;
+    private final FeedCandidateRepository candidateRepository;
     private final InteractionRepository interactionRepository;
+    private final UserTasteProfileBuilder profileBuilder;
+    private final FeedSessionStore sessionStore;
+    private final DiscoveryFeedProperties properties;
 
-    public Page<FeedResponse> getDiscoveryFeed(UUID userId, Pageable pageable) {
-        List<FeedResponse> fullFeed = getOrComputeTop50Feed(userId);
+    public DiscoveryFeedPage getDiscoveryFeed(UUID userId, String cursor, int size) {
+        FeedSession session;
+        int offset;
 
-        int pageSize = pageable.getPageSize();
-        int currentPage = pageable.getPageNumber();
-        int startItem = currentPage * pageSize;
-
-        List<FeedResponse> pageContent;
-        if (fullFeed.size() <= startItem) {
-            pageContent = Collections.emptyList();
+        if (cursor == null || cursor.isBlank()) {
+            session = sessionStore.create(userId);
+            offset = 0;
         } else {
-            int toIndex = Math.min(startItem + pageSize, fullFeed.size());
-            pageContent = fullFeed.subList(startItem, toIndex);
-        }
-
-        return new PageImpl<>(pageContent, pageable, fullFeed.size());
-    }
-
-    @Cacheable(value = CacheConfig.DISCOVERY_FEED_CACHE, key = "#userId")
-    public List<FeedResponse> getOrComputeTop50Feed(UUID userId) {
-        log.info("Computing fresh 1152-d discovery feed for userId: {}", userId);
-
-        List<Interaction> interactions = interactionRepository.findByUserId(userId);
-        List<Feed> resultPins;
-
-        if (interactions.isEmpty()) {
-            resultPins = feedRepository.findTopRecentPins(50);
-        } else {
-            List<UUID> pinIds = interactions.stream().map(Interaction::getPinId).distinct().toList();
-            List<Feed> interactedPins = feedRepository.findAllByPinIdIn(pinIds);
-
-            // 1152 ölçülü profil vektorunun hesablanması
-            float[] userCentroid = VectorDecayCalculator.calculateUserProfileVector(interactions, interactedPins);
-            String pgVectorQuery = VectorDecayCalculator.toPgVectorString(userCentroid);
-
-            resultPins = feedRepository.findTopSimilarPins(pgVectorQuery, pinIds, 50);
-
-            // Əgər oxşar pinlərin sayı 50-dən az olarsa, qalanını yeni pinlərlə tamamlayır
-            if (resultPins.size() < 50) {
-                int deficit = 50 - resultPins.size();
-                List<Feed> backupPins = feedRepository.findTopRecentPins(deficit);
-                resultPins.addAll(backupPins);
+            FeedCursor decoded = FeedCursor.decode(cursor);
+            FeedSession existing = sessionStore.find(decoded.getSessionId())
+                    .filter(found -> found.getUserId().equals(userId))
+                    .orElse(null);
+            if (existing == null) {
+                log.debug("Feed session {} not found or not owned by userId: {}, starting a new one",
+                        decoded.getSessionId(), userId);
+                session = sessionStore.create(userId);
+                offset = 0;
+            } else {
+                session = existing;
+                offset = decoded.getOffset();
             }
         }
 
-        return resultPins.stream()
-                .map(this::mapToResponse)
-                .toList();
+        ensureCapacity(session, userId, offset + size);
+
+        List<FeedResponse> items = sessionStore.slice(session.getId(), offset, size);
+        int nextOffset = offset + items.size();
+        boolean hasMore = nextOffset < session.getSize()
+                || (!session.isExhausted() && session.getSize() < properties.getMaxSessionSize());
+        String nextCursor = hasMore ? new FeedCursor(session.getId(), nextOffset).encode() : null;
+
+        return DiscoveryFeedPage.builder()
+                .items(items)
+                .nextCursor(nextCursor)
+                .hasMore(hasMore)
+                .build();
     }
 
-    private FeedResponse mapToResponse(Feed feed) {
-        return FeedResponse.builder()
-                .id(feed.getId())
-                .pinId(feed.getPinId())
-                .mediaUrl(feed.getMediaUrl())
-                .mediaWidth(feed.getMediaWidth())
-                .mediaHeight(feed.getMediaHeight())
-                .createdAt(feed.getCreatedAt())
-                .build();
+    private void ensureCapacity(FeedSession session, UUID userId, int required) {
+        int target = Math.min(required, properties.getMaxSessionSize());
+        while (session.getSize() < target && !session.isExhausted()) {
+            Set<UUID> served = sessionStore.servedPinIds(session.getId());
+            List<FeedResponse> batch = buildBatch(userId, served, properties.getBatchSize());
+            int added = sessionStore.append(session, batch, properties.getMaxSessionSize());
+            if (added == 0) {
+                sessionStore.markExhausted(session);
+            }
+        }
+    }
+
+    private List<FeedResponse> buildBatch(UUID userId, Set<UUID> alreadyServed, int batchSize) {
+        long startedAt = System.currentTimeMillis();
+
+        List<Interaction> interactions = interactionRepository.findRecentByUserId(
+                userId, Limit.of(properties.getMaxInteractions()));
+        Map<UUID, Double> pinScores = profileBuilder.aggregatePinScores(interactions, Instant.now());
+
+        Map<UUID, float[]> embeddings = pinScores.isEmpty()
+                ? Map.of()
+                : feedRepository.findAllByPinIdIn(pinScores.keySet()).stream()
+                        .filter(feed -> feed.getEmbedding() != null)
+                        .collect(Collectors.toMap(Feed::getPinId, Feed::getEmbedding, (first, second) -> first));
+
+        TasteProfile profile = profileBuilder.build(pinScores, embeddings);
+
+        Set<UUID> excluded = new HashSet<>(profile.getSeenPinIds());
+        excluded.addAll(alreadyServed);
+
+        List<FeedResponse> result;
+        if (profile.hasVector()) {
+            int exploreTarget = (int) Math.round(batchSize * properties.getExplorationRatio());
+            List<FeedResponse> similar = candidateRepository.findSimilar(
+                    profile.getQueryVector(), excluded, batchSize - exploreTarget);
+            similar.forEach(item -> excluded.add(item.getPinId()));
+
+            List<FeedResponse> explore = candidateRepository.findRecent(excluded, batchSize - similar.size());
+            result = interleave(similar, explore, properties.getExplorationRatio());
+        } else {
+            result = candidateRepository.findRecent(excluded, batchSize);
+        }
+
+        log.info("Built discovery batch for userId: {} | interactions: {}, personalized: {}, items: {}, took: {} ms",
+                userId, interactions.size(), profile.hasVector(), result.size(),
+                System.currentTimeMillis() - startedAt);
+        return result;
+    }
+
+    static List<FeedResponse> interleave(List<FeedResponse> main, List<FeedResponse> explore, double ratio) {
+        if (explore.isEmpty()) {
+            return main;
+        }
+        if (main.isEmpty()) {
+            return explore;
+        }
+        if (ratio <= 0) {
+            List<FeedResponse> result = new ArrayList<>(main);
+            result.addAll(explore);
+            return result;
+        }
+
+        int step = (int) Math.max(2, Math.round(1 / ratio));
+        List<FeedResponse> result = new ArrayList<>(main.size() + explore.size());
+        int mainIndex = 0;
+        int exploreIndex = 0;
+
+        while (mainIndex < main.size() || exploreIndex < explore.size()) {
+            boolean exploreSlot = (result.size() + 1) % step == 0;
+            if ((exploreSlot && exploreIndex < explore.size()) || mainIndex >= main.size()) {
+                result.add(explore.get(exploreIndex++));
+            } else {
+                result.add(main.get(mainIndex++));
+            }
+        }
+        return result;
     }
 }

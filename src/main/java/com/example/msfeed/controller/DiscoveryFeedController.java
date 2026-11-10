@@ -1,11 +1,11 @@
 package com.example.msfeed.controller;
 
-import com.example.msfeed.dto.FeedResponse;
+import com.example.msfeed.dto.DiscoveryFeedPage;
 import com.example.msfeed.service.DiscoveryFeedService;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -23,15 +23,13 @@ public class DiscoveryFeedController {
     private final DiscoveryFeedService discoveryFeedService;
 
     @GetMapping("/discovery")
-    public ResponseEntity<Page<FeedResponse>> getDiscoveryFeed(
+    public ResponseEntity<DiscoveryFeedPage> getDiscoveryFeed(
             @AuthenticationPrincipal Jwt jwt,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-
-        UUID userId = UUID.fromString(Objects.requireNonNull(jwt.getSubject()));
-        Pageable pageable = PageRequest.of(page, size);
-
-        Page<FeedResponse> feedPage = discoveryFeedService.getDiscoveryFeed(userId, pageable);
-        return ResponseEntity.ok(feedPage);
+            @RequestParam(required = false) @Size(max = 200) String cursor,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size) {
+        DiscoveryFeedPage page = discoveryFeedService.getDiscoveryFeed(
+                UUID.fromString(Objects.requireNonNull(jwt.getSubject())),
+                cursor, size);
+        return ResponseEntity.ok(page);
     }
 }
